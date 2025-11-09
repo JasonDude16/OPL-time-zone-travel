@@ -1,0 +1,356 @@
+---
+title: "Time Zone Travel Is Associated With Reductions In Competitive Powerlifting Performance In U.S. Adults"
+author:
+  - name: Jason Dude
+    email: jason.dude@utah.edu
+    affiliation: University of Utah
+  - name: Christopher Depner
+    affiliation: University of Utah
+    email: christopher.depner@utah.edu
+format:
+  html:
+    embed-resources: true
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+## Abstract
+
+### Introduction
+
+Sleep loss and circadian misalignment—such as that caused by time zone travel—impair neuromuscular performance and power output in laboratory settings. However, limited evidence exists on whether these effects impair real-world performance in strength competitions.
+
+### Purpose
+
+To determine whether the number and direction of time zones crossed before competition predicts changes in powerlifting performance versus a lifter’s prior meet.
+
+### Methods
+
+Public meet results were obtained from the OpenPowerlifting database. Inclusion criteria: U.S. men and women (24–64 y), raw USAPL/USPA squat-bench-deadlift (SBD) events held in the U.S., valid attempts in all three lifts, and ≥2 meets within 30–365 days with minimal body mass change (\<5 kg). Time zone offsets were determined using lifter home state and meet state. To isolate the effect of travel into a new time zone, only meets where the previous meet occurred in the lifter’s home time zone were included. Performance was defined as total weight lifted (TotalKg), and performance change was calculated within-lifter as ΔTotal = current TotalKg − previous TotalKg. Implausible changes (\< −25 kg or \> +75 kg) were excluded. A linear mixed-effects model (random intercepts for lifter) estimated the effect of time zone travel on ΔTotal, adjusting for sex, age class, body mass, and days since prior meet.
+
+### Results
+
+17,307 repeat U.S. lifters (45% women) met inclusion criteria. Crossing time zones predicted worse performance relative to competing in the same time zone. The largest performance reduction occurred when crossing 2 time zones (Eastward: β = −4.5 kg, 95% CI: −6.7 to −2.2, p\<0.01; Westward: β = −7.4 kg, 95% CI: −9.0 to −5.8, p\<0.01).
+
+### Discussion
+
+These findings suggest time zone travel impairs performance in real-world competition conditions. Athletes and coaches should consider arriving earlier to allow sufficient adjustment to the new time zone and optimize sleep and circadian phase prior to competition.
+
+## Code
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(lubridate)
+library(lme4)
+library(lmerTest)
+library(lutz)
+```
+
+```{r message=FALSE}
+df_raw <- read_csv("../data/openpowerlifting-2025-11-01-695242b2.csv")
+```
+
+```{r cache=TRUE}
+df_filt <- df_raw |> 
+  mutate(
+    Date = ymd(Date, quiet = TRUE),
+    Sex = as.factor(Sex),
+    Equipment = as.factor(Equipment),
+  ) |> 
+  filter(
+    !is.na(AgeClass),
+    !is.na(State),
+    !is.na(Country),
+    !is.na(MeetCountry),
+    !is.na(MeetState),
+    !is.na(Best3SquatKg),
+    !is.na(Best3BenchKg),
+    !is.na(Best3DeadliftKg),
+    !is.na(Dots),
+    !is.na(Country),
+    !is.na(Tested)
+  ) |> 
+  filter(
+    Country == "USA",
+    MeetCountry == "USA",
+    Federation %in% c("USAPL", "USPA"),
+    State != "Guam",
+    MeetState != "Guam",
+    Best3SquatKg > 0,
+    Best3DeadliftKg > 0,
+    Best3BenchKg > 0,
+    Sex %in% c("M", "F"),
+    Equipment == "Raw",
+    AgeClass %in% c(
+      "24-34", 
+      "35-39", 
+      "40-44", 
+      "45-49", 
+      "50-54", 
+      "55-59", 
+      "60-64"
+    ),
+    Event == "SBD",
+    Place != "DQ",
+    Tested == "Yes",
+    Sanctioned == "Yes",
+    year(Date) > 2005,
+    year(Date) != 2020
+  )
+```
+
+```{r}
+state_timezone <- function(states, dates = Sys.Date()) {
+  if (length(dates) == 1) {
+   dates <- rep(dates, length(states)) 
+  }
+  stopifnot(length(states) == length(dates))
+  
+  # lookup table for 50 states + DC
+  us_states_tbl <- tibble::tibble(
+    StateName = c(state.name, "District Of Columbia"),
+    StateAbb = c(state.abb, "DC"),
+    lon = c(as.numeric(state.center$x), -77.0369),
+    lat = c(as.numeric(state.center$y), 38.9072)
+  )
+  
+  # check that abbreviations are valid
+  valid_idx <- states %in% us_states_tbl$StateAbb
+  if (any(!valid_idx)) {
+    warning(
+      "Invalid state abbreviations: ",
+      paste(unique(states[!valid_idx]), collapse = ", ")
+    )
+  }
+  
+  # filter only valid pairs
+  states <- states[valid_idx]
+  dates <- dates[valid_idx]
+  
+  # compute per-state offset
+  results <- map2_dfr(states, dates, function(st, dt) {
+    row <- us_states_tbl[us_states_tbl$StateAbb == st, ]
+    tz <- lutz::tz_lookup_coords(
+      lat = row$lat,
+      lon = row$lon,
+      method = "fast",
+      warn = FALSE
+    )
+    # compute offset correctly, accounting for time of year
+    local_noon_UTC <- with_tz(as.POSIXct(paste0(dt, " 12:00:00"), tz = tz), "UTC")
+    utc_noon <- as.POSIXct(paste0(dt, " 12:00:00"), tz = "UTC")
+    offset_h <- -as.numeric(difftime(local_noon_UTC, utc_noon, units = "hours"))
+    
+    return(
+      tibble(
+        State = st,
+        Date = dt,
+        TimeZone = tz,
+        UTC_Offset_h = offset_h
+      ) 
+    )
+  })
+  
+  return(results)
+}
+```
+
+```{r cache=TRUE}
+# use UTC offsest difference to derive direction of travel
+df_tz <- df_filt |>
+  mutate(
+    StateTzOffset = state_timezone(State, Date)$UTC_Offset_h,
+    MeetStateTzOffset = state_timezone(MeetState, Date)$UTC_Offset_h,
+    StateMeetTzDiff = MeetStateTzOffset - StateTzOffset,
+    Direction = case_when(
+      StateMeetTzDiff == 0 ~ "Local",
+      StateMeetTzDiff > 0 ~ "Eastward",
+      StateMeetTzDiff < 0 ~ "Westward",
+    )
+  ) 
+```
+
+```{r}
+# only keep one record if they competed in multiple divisions at an event
+df_single_div <- df_tz |>
+  arrange(Name, Date, desc(TotalKg), desc(Dots)) |>
+  distinct(Name, Date, .keep_all = TRUE)
+```
+
+```{r}
+# filter to individuals with multiple meets
+df_mult_meet <- df_single_div |> 
+  group_by(Name) |> 
+  mutate(MeetCount = n()) |> 
+  filter(between(MeetCount, 2, 10)) |> 
+  ungroup()
+```
+
+```{r}
+# get each lifter's previous lifting stats  
+df_lags <- df_mult_meet |> 
+  group_by(Name) |> 
+  arrange(Date) |> 
+  mutate(
+    PrevAgeClass     = dplyr::lag(AgeClass),
+    PrevBodyweightKg = dplyr::lag(BodyweightKg),
+    PrevDate         = dplyr::lag(Date),
+    PrevDots         = dplyr::lag(Dots),
+    PrevTotal        = dplyr::lag(TotalKg),
+    PrevDeltaTz      = dplyr::lag(StateMeetTzDiff),              
+    DaysSinceLast    = as.numeric(Date - PrevDate),
+    DeltaDots        = Dots - PrevDots,
+    DeltaTotal       = TotalKg - PrevTotal
+  ) |> 
+  ungroup()
+
+# filter to events in the last year
+# ensure weight fluctuation is minimal (can significantly influence total weight)
+df_clean <- df_lags |> 
+  filter(
+    !is.na(PrevDate),
+    between(DaysSinceLast, 30, 365),
+    PrevDeltaTz == 0,
+    AgeClass == PrevAgeClass,
+    abs(BodyweightKg - PrevBodyweightKg) <= 5
+  ) |>
+  filter(between(DeltaTotal, -25, 75)) |> 
+  mutate(cDays = as.numeric(scale(DaysSinceLast))) |> 
+  arrange(Name, Date)
+```
+
+```{r}
+rmarkdown::paged_table(df_clean[1:100, ])
+```
+
+```{r}
+# number of unique lifters
+n_distinct(df_clean$Name)
+```
+
+```{r}
+# days since last meet (~recovery)
+hist(df_clean$DaysSinceLast)
+```
+
+```{r}
+# delta total 
+hist(df_clean$DeltaTotal)
+```
+
+```{r}
+# age class distribution 
+table(df_clean$AgeClass)
+```
+
+```{r}
+table(df_clean$Sex)
+```
+
+```{r}
+# time zone and direction Ns 
+table(df_clean$StateMeetTzDiff, df_clean$Direction)
+```
+
+```{r}
+# setting local meet as reference level
+df_clean <- df_clean |> 
+  mutate(
+    StateMeetTzDiff = factor(StateMeetTzDiff),
+    StateMeetTzDiff = relevel(StateMeetTzDiff, ref = "0") 
+  )
+```
+
+```{r}
+# mixed model with random intercepts for each lifter
+mod <- lmer(
+  DeltaTotal ~ StateMeetTzDiff + AgeClass + Sex + BodyweightKg + cDays + (1 | Name), 
+  data = df_clean
+)
+```
+
+```{r}
+mod |> 
+  broom.mixed::tidy(effects = "fixed", conf.int = TRUE) |> 
+  rmarkdown::paged_table()
+```
+
+```{r}
+plot(resid(mod) ~ fitted(mod))
+```
+
+```{r}
+# model estimates
+emm <- emmeans::emmeans(mod, ~ StateMeetTzDiff, pbkrtest.limit = Inf)      
+emm_df <- as.data.frame(emm)
+
+emm_df <- emm_df %>%
+  mutate(
+    tz_signed = as.integer(as.character(StateMeetTzDiff)),        
+    Direction = case_when(
+      tz_signed >  0 ~ "Eastward",
+      tz_signed <  0 ~ "Westward",
+      tz_signed == 0 ~ "Local"
+    ),
+    tz_abs = abs(tz_signed)
+  )
+```
+
+```{r}
+# duplicate local tz for plotting
+emm_df_dup <- emm_df |> 
+  rbind(filter(emm_df, Direction == "Local")) |> 
+  arrange(as.numeric(tz_abs))
+
+emm_df_dup$Direction[1] <- "Eastward"
+emm_df_dup$Direction[2] <- "Westward"
+```
+
+```{r}
+(p <- emm_df_dup |> 
+    ggplot(aes(
+      x = tz_abs,
+      y = emmean,
+      color = Direction
+    )) +
+    geom_line(linewidth = 1) +
+    geom_point(size = 2) +
+    geom_errorbar(
+      aes(
+        ymin = lower.CL,
+        ymax = upper.CL
+      ),
+      width = 0.15,
+      alpha = 0.6
+    ) +
+    scale_color_manual(values = c("Eastward" = "#e41a1c", "Westward" = "#377eb8")) +
+    scale_x_continuous(breaks = 0:12) +
+    labs(
+      title = "Within-Lifter ΔTotal vs. Time Zone Difference",
+      subtitle = "Prior meet required to be at home time zone. Error bars = 95% CI.",
+      x = "Number of time zones crossed",
+      y = "Change in total weight lifted (kg)",
+      color = "Travel Direction"
+    ) +
+    scale_y_continuous(limits = c(0, 15), breaks = c(0, 5, 10, 15)) +
+    theme_minimal(base_size = 15) +
+    theme(
+      axis.title.x = element_text(face = "bold"),
+      axis.title.y = element_text(face = "bold"),
+      plot.title = element_text(face = "bold"),
+      panel.grid.minor = element_blank(),
+      legend.position = c(0.61, .8),
+      legend.direction = "horizontal",
+      panel.grid.major.x = element_blank()
+    )
+)
+
+ggsave(
+  filename = "../figs/delta_total_by_time_zone.jpg",
+  plot = p,
+  height = 1600,
+  width = 2100,
+  units = "px"
+)
+```
