@@ -27,13 +27,13 @@ To determine whether the number and direction of time zones crossed before compe
 
 ### Methods
 
-Public meet results were obtained from the OpenPowerlifting database. Inclusion criteria: U.S. men and women (24–64 y), raw USAPL/USPA squat-bench-deadlift (SBD) events held in the U.S., valid attempts in all three lifts, and ≥2 meets within 30–365 days with minimal body mass change (\<5 kg). Time zone offsets were determined using lifter home state and meet state. To isolate the effect of travel into a new time zone, only meets where the previous meet occurred in the lifter’s home time zone were included. Performance was defined as total weight lifted (TotalKg), and performance change was calculated within-lifter as ΔTotal = current TotalKg − previous TotalKg. Implausible changes (\< −25 kg or \> +75 kg) were excluded. A linear mixed-effects model (random intercepts for lifter) estimated the effect of time zone travel on ΔTotal, adjusting for sex, age class, body mass, and days since prior meet.
+Public meet results were obtained from the OpenPowerlifting database. Inclusion criteria: U.S. men and women (24-64 y), raw USAPL/USPA squat-bench-deadlift (SBD) events held in the U.S., valid attempts in all three lifts, and ≥2 meets within 30-365 days with minimal body mass change (\<5 kg). Time zone offsets were determined using lifter home state and meet state. To isolate the effect of travel into a new time zone, only meets where the previous meet occurred in the lifter’s home time zone were included. Performance was defined as total weight lifted (TotalKg), and performance change was calculated within-lifter as ΔTotal = current TotalKg − previous TotalKg. Implausible changes (\< −25 kg or \> +75 kg) were excluded. A linear mixed-effects model (random intercept for lifter) estimated the effect of time zone travel on ΔTotal, adjusting for sex, age class, body mass, and days since prior meet.
 
 ### Results
 
 17,307 repeat U.S. lifters (45% women) met inclusion criteria. Crossing time zones predicted worse performance relative to competing in the same time zone. The largest performance reduction occurred when crossing 2 time zones (Eastward: β = −4.5 kg, 95% CI: −6.7 to −2.2, p\<0.01; Westward: β = −7.4 kg, 95% CI: −9.0 to −5.8, p\<0.01).
 
-### Discussion
+### Conclusion
 
 These findings suggest time zone travel impairs performance in real-world competition conditions. Athletes and coaches should consider arriving earlier to allow sufficient adjustment to the new time zone and optimize sleep and circadian phase prior to competition.
 
