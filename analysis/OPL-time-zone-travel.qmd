@@ -27,11 +27,11 @@ To determine whether the number and direction of time zones crossed before compe
 
 ### Methods
 
-Public meet results were obtained from the OpenPowerlifting database. Inclusion criteria: U.S. men and women (24-64 y), raw USAPL/USPA squat-bench-deadlift (SBD) events held in the U.S., valid attempts in all three lifts, and ≥2 meets within 30-365 days with minimal body mass change (\<5 kg). Time zone offsets were determined using lifter home state and meet state. To isolate the effect of travel into a new time zone, only meets where the previous meet occurred in the lifter’s home time zone were included. Performance was defined as total weight lifted (TotalKg), and performance change was calculated within-lifter as ΔTotal = current TotalKg − previous TotalKg. Implausible changes (\< −25 kg or \> +75 kg) were excluded. A linear mixed-effects model (random intercept for lifter) estimated the effect of time zone travel on ΔTotal, adjusting for sex, age class, body mass, and days since prior meet.
+Public meet results were obtained from the OpenPowerlifting database. Inclusion criteria: U.S. men and women (24-64 y), raw USAPL/USPA squat-bench-deadlift (SBD) events held in the U.S., valid attempts in all three lifts, and ≥2 meets within 30-365 days with minimal body mass change (\<5 kg). Time zone offsets were determined using lifter home state and meet state. To isolate the effect of travel into a new time zone, only meets where the previous meet occurred in the lifter’s home time zone were included. Performance was defined as total weight lifted (TotalKg), and performance change was calculated within-lifter as ΔTotal = current TotalKg − previous TotalKg. Implausible changes (\< −25 kg or \> +75 kg) were excluded. A linear mixed-effects model (random intercept for lifter) estimated the effect of time zone travel on ΔTotal, adjusting for sex, age class, body mass, number of meets, and days since prior meet.
 
 ### Results
 
-17,307 repeat U.S. lifters (45% women) met inclusion criteria. Crossing time zones predicted worse performance relative to competing in the same time zone. The largest performance reduction occurred when crossing 2 time zones (Eastward: β = −4.5 kg, 95% CI: −6.7 to −2.2, p\<0.01; Westward: β = −7.4 kg, 95% CI: −9.0 to −5.8, p\<0.01).
+13,130 repeat U.S. lifters (46% women) met inclusion criteria. Performance gains were greatest when competing locally (\~11–12 kg) and were attenuated when crossing time zones, with the largest reduction observed after crossing 1–2 time zones, independent of travel direction (Eastward, 1 time zone: β = −4.0 kg, 95% CI: −6.0 to −2.0, p\<0.01; Westward, 1 time zone: β = −4.0 kg, 95% CI: −5.5 to −2.4, p\<0.01).
 
 ### Conclusion
 
@@ -157,8 +157,21 @@ state_timezone <- function(states, dates = Sys.Date()) {
 ```
 
 ```{r cache=TRUE}
+
+split_states <- c(
+  "FL", "TN", "KY", "IN", "MI",
+  "TX", "ND", "SD", "NE", "KS",
+  "ID", "OR"
+)
+
+df_filt_nosplit <- df_filt |> 
+  filter(
+    !(State %in% split_states),
+    !(MeetState %in% split_states)
+  )
+
 # use UTC offsest difference to derive direction of travel
-df_tz <- df_filt |>
+df_tz <- df_filt_nosplit |>
   mutate(
     StateTzOffset = state_timezone(State, Date)$UTC_Offset_h,
     MeetStateTzOffset = state_timezone(MeetState, Date)$UTC_Offset_h,
@@ -182,15 +195,19 @@ df_single_div <- df_tz |>
 # filter to individuals with multiple meets
 df_mult_meet <- df_single_div |> 
   group_by(Name) |> 
-  mutate(MeetCount = n()) |> 
-  filter(between(MeetCount, 2, 10)) |> 
+  arrange(Date) |> 
+  mutate(
+    MeetCount = n(),
+    MeetNumber = row_number()
+  ) |> 
+  filter(MeetCount >= 2) |> 
   ungroup()
 ```
 
 ```{r}
 # get each lifter's previous lifting stats  
 df_lags <- df_mult_meet |> 
-  group_by(Name) |> 
+  group_by(Name, State) |> 
   arrange(Date) |> 
   mutate(
     PrevAgeClass     = dplyr::lag(AgeClass),
@@ -213,7 +230,8 @@ df_clean <- df_lags |>
     between(DaysSinceLast, 30, 365),
     PrevDeltaTz == 0,
     AgeClass == PrevAgeClass,
-    abs(BodyweightKg - PrevBodyweightKg) <= 5
+    abs(BodyweightKg - PrevBodyweightKg) <= 5,
+    between(MeetNumber, 2, 8)
   ) |>
   filter(between(DeltaTotal, -25, 75)) |> 
   mutate(cDays = as.numeric(scale(DaysSinceLast))) |> 
@@ -265,7 +283,7 @@ df_clean <- df_clean |>
 ```{r}
 # mixed model with random intercepts for each lifter
 mod <- lmer(
-  DeltaTotal ~ StateMeetTzDiff + AgeClass + Sex + BodyweightKg + cDays + (1 | Name), 
+  DeltaTotal ~ StateMeetTzDiff + MeetNumber + AgeClass + Sex + BodyweightKg + cDays + (1 | Name), 
   data = df_clean
 )
 ```
@@ -340,7 +358,7 @@ emm_df_dup$Direction[2] <- "Westward"
       axis.title.y = element_text(face = "bold"),
       plot.title = element_text(face = "bold"),
       panel.grid.minor = element_blank(),
-      legend.position = c(0.61, .8),
+      legend.position = c(0.53, .2),
       legend.direction = "horizontal",
       panel.grid.major.x = element_blank()
     )
