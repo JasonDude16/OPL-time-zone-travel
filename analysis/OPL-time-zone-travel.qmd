@@ -48,7 +48,7 @@ library(lutz)
 ```
 
 ```{r message=FALSE}
-df_raw <- read_csv("../data/openpowerlifting-2025-11-01-695242b2.csv")
+df_raw <- read_csv("../data/openpowerlifting-2026-02-28-ee61a5aa.csv")
 ```
 
 ```{r cache=TRUE}
@@ -59,6 +59,7 @@ df_filt <- df_raw |>
     Equipment = as.factor(Equipment),
   ) |> 
   filter(
+    !is.na(Age)
     !is.na(AgeClass),
     !is.na(State),
     !is.na(Country),
@@ -327,19 +328,21 @@ emm_df_dup$Direction[2] <- "Westward"
 
 ```{r}
 (p <- emm_df_dup |> 
+    mutate(Direction = fct_rev(Direction)) %>% 
     ggplot(aes(
       x = tz_abs,
       y = emmean,
       color = Direction
     )) +
-    geom_line(linewidth = 1) +
-    geom_point(size = 2) +
+    geom_line(linewidth = 1.3) +
+    geom_point(size = 2.5) +
     geom_errorbar(
       aes(
         ymin = lower.CL,
         ymax = upper.CL
       ),
-      width = 0.15,
+      width = 0.3,
+      linewidth = 1,
       alpha = 0.6
     ) +
     scale_color_manual(values = c("Eastward" = "#e41a1c", "Westward" = "#377eb8")) +
@@ -351,15 +354,20 @@ emm_df_dup$Direction[2] <- "Westward"
       y = "Change in total weight lifted (kg)",
       color = "Travel Direction"
     ) +
-    scale_y_continuous(limits = c(0, 15), breaks = c(0, 5, 10, 15)) +
-    theme_minimal(base_size = 15) +
+    scale_y_continuous(limits = c(0, 20), breaks = c(0, 5, 10, 15, 20)) +
+    theme_minimal() +
     theme(
+      text = element_text(size = 16),
+      legend.title = element_text(face = "bold"),
+      legend.text = element_text(face = "bold"),
       axis.title.x = element_text(face = "bold"),
       axis.title.y = element_text(face = "bold"),
       plot.title = element_text(face = "bold"),
+      axis.line = element_line(linewidth = 0.8),
       panel.grid.minor = element_blank(),
-      legend.position = c(0.53, .2),
+      legend.position = c(0.53, .78),
       legend.direction = "horizontal",
+      legend.box.background = element_rect(color = "black"),
       panel.grid.major.x = element_blank()
     )
 )
@@ -367,8 +375,8 @@ emm_df_dup$Direction[2] <- "Westward"
 ggsave(
   filename = "../figs/delta_total_by_time_zone.jpg",
   plot = p,
-  height = 1600,
-  width = 2100,
+  height = 1500,
+  width = 2200,
   units = "px"
 )
 ```
