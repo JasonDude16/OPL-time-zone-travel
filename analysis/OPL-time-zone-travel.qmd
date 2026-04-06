@@ -182,14 +182,14 @@ df_tz <- df_filt |>
 ```{r}
 # only keep one record if they competed in multiple divisions at an event
 df_single_div <- df_tz |>
-  arrange(Name, Date, desc(TotalKg), desc(Dots)) |>
-  distinct(Name, Date, .keep_all = TRUE)
+  arrange(Name, State, Date, desc(TotalKg), desc(Dots)) |>
+  distinct(Name, State, Date, .keep_all = TRUE)
 ```
 
 ```{r}
 # filter to individuals with multiple meets
 df_mult_meet <- df_single_div |> 
-  group_by(Name) |> 
+  group_by(Name, State) |> 
   arrange(Date) |> 
   mutate(
     MeetCount = n(),
@@ -202,7 +202,7 @@ df_mult_meet <- df_single_div |>
 ```{r}
 df_lags <- df_mult_meet |> 
   group_by(Name, State) |> 
-  arrange(Date) |> 
+  arrange(Name, State, Date) |> 
   mutate(
     PrevAgeClass     = dplyr::lag(AgeClass),
     PrevBodyweightKg = dplyr::lag(BodyweightKg),
@@ -212,7 +212,8 @@ df_lags <- df_mult_meet |>
     PrevDeltaTz      = dplyr::lag(StateMeetTzDiff),              
     DaysSinceLast    = as.numeric(Date - PrevDate),
     DeltaDots        = Dots - PrevDots,
-    DeltaTotal       = TotalKg - PrevTotal
+    DeltaTotal       = TotalKg - PrevTotal,
+    DeltaTotalPerc   = DeltaTotal / TotalKg
   ) |> 
   ungroup()
 
@@ -244,9 +245,9 @@ rmarkdown::paged_table(df_clean[1:100, ])
 print(paste("Number of observations:", nrow(df_clean)))
 table(df_clean$Sex)
 
-print(paste("Number of unique lifters:", n_distinct(df_clean$Name)))
+print(paste("Number of unique lifters:", n_distinct(df_clean$Name, df_clean$State)))
 df_clean |> 
-  group_by(Name) |> 
+  group_by(Name, State) |> 
   summarise(
     count = n(),
     sex = Sex[1]
@@ -410,7 +411,7 @@ ggsave(
 
 ```{r}
 p_obs_per_person <- df_clean |> 
-  group_by(Name) |> 
+  group_by(Name, State) |> 
   summarise(n_obs = n()) |> 
   group_by(n_obs) |> 
   summarise(count = n()) |> 
@@ -432,6 +433,8 @@ p_obs_per_person <- df_clean |>
   )
 
 p_age_class <- df_clean |> 
+  group_by(Name, State) |> 
+  summarise(AgeClass = AgeClass[1], .groups = "drop_last") |> 
   group_by(AgeClass) |> 
   summarise(count = n()) |> 
   ggplot(aes(AgeClass, count)) +
@@ -448,6 +451,8 @@ p_age_class <- df_clean |>
   )
 
 p_meet_number <- df_clean |> 
+  group_by(Name, State) |> 
+  summarise(MeetNumber = MeetNumber[1], .groups = "drop_last") |> 
   group_by(MeetNumber) |> 
   summarise(count = n()) |> 
   ggplot(aes(MeetNumber, count)) +
@@ -482,8 +487,8 @@ p_vars <- gridExtra::arrangeGrob(
 ggsave(
   filename = "../figs/p_vars.jpeg",
   plot = p_vars,
-  height = 2200,
-  width = 2000,
+  height = 3000,
+  width = 2800,
   units = "px"
 )
 ```
