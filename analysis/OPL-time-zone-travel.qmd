@@ -268,6 +268,7 @@ plot_theme <- function() {
       colour = "gray50",
       linewidth = 1.5
     ),
+    axis.ticks = element_line(color = "gray50"),
     strip.text = element_text(face = "bold", color = "gray90"),
     plot.background = element_rect(fill = "black", color = NA),
     panel.background = element_rect(fill = "black", color = NA),
@@ -286,6 +287,72 @@ plot_theme <- function() {
     panel.grid.major.x = element_blank()
   )
 }
+```
+
+```{r}
+p_n_lifters <- df_clean |> 
+  mutate(n_obs = n()) |> 
+  group_by(Name, State) |> 
+  summarise(
+    n_obs = n_obs[1],
+    n_lifters = n()
+  ) |> 
+  ungroup() |> 
+  summarise(
+    n_obs = n_obs[1],
+    n_lifters = n()
+  ) |> 
+  pivot_longer(cols = everything(), values_to = "count", names_to = "variable") |> 
+  mutate(
+    variable = ifelse(variable == "n_obs", "# Records", "Lifters"),
+    variable = fct_rev(as.factor(variable))
+  ) |> 
+  ggplot(aes(count, variable)) +
+  geom_col(width = 0.7, colour = "gray90", fill = "gray60", show.legend = FALSE) +
+  plot_theme() +
+  theme(
+    axis.line = element_line(linewidth = 1.5, color = "gray50"),
+    panel.grid.major = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(), 
+    axis.text.x = element_text(size = 20),
+    axis.text.y = element_text(face = "bold", size = 22)
+  )
+
+ggsave(
+  filename = "../figs/p_n_lifters.jpeg",
+  plot = p_n_lifters,
+  height = 800,
+  width = 2800,
+  units = "px"
+) 
+```
+
+```{r}
+p_sex_count <- df_clean |> 
+  group_by(Sex) |> 
+  count() |> 
+  mutate(Sex = case_when(Sex == "M" ~ "Males", Sex == "F" ~ "Females")) |> 
+  rename(Count = n) |> 
+  ggplot(aes(Count, Sex)) +
+  geom_col(width = 0.7, colour = "gray90", fill = "gray60", show.legend = FALSE) +
+  plot_theme() +
+  theme(
+    axis.line = element_line(linewidth = 1.5, color = "gray50"),
+    panel.grid.major = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_text(size = 22),
+    axis.text.x = element_text(size = 20),
+    axis.text.y = element_text(face = "bold", size = 22)
+  )
+
+ggsave(
+  filename = "../figs/p_sex_count.jpeg",
+  plot = p_sex_count,
+  height = 800,
+  width = 2800,
+  units = "px"
+) 
 ```
 
 ```{r}
@@ -339,7 +406,7 @@ ggsave(
   filename = "../figs/p_weightlifted.jpeg",
   plot = p_weightlifted,
   height = 1000,
-  width = 3000,
+  width = 3100,
   units = "px"
 ) 
 ```
@@ -444,6 +511,7 @@ p_age_class <- df_clean |>
   theme_classic() +
   plot_theme() +
   theme(
+    axis.line = element_line(linewidth = 1.5),
     axis.title.y = element_blank(),
     axis.title.x = element_text(size = 20),
     axis.text.x = element_text(size = 22),
@@ -478,17 +546,19 @@ gridExtra::grid.arrange(
   p_meet_number
 )
 
-p_vars <- gridExtra::arrangeGrob(
-  ncol = 1,
-  p_age_class,
-  p_meet_number
+ggsave(
+  filename = "../figs/p_age_class.jpeg",
+  plot = p_age_class,
+  height = 1600,
+  width = 2500,
+  units = "px"
 )
 
 ggsave(
-  filename = "../figs/p_vars.jpeg",
-  plot = p_vars,
-  height = 3000,
-  width = 2800,
+  filename = "../figs/p_meet_number.jpeg",
+  plot = p_meet_number,
+  height = 1600,
+  width = 2500,
   units = "px"
 )
 ```
@@ -837,7 +907,7 @@ emm_df_dup$Direction[2] <- "Westward"
 ggsave(
   filename = "../figs/delta_total_by_time_zone.jpg",
   plot = p_emm_tz_travel,
-  height = 1500,
+  height = 1700,
   width = 2400,
   units = "px"
 )
