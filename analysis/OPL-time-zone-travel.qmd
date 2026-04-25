@@ -66,7 +66,6 @@ df_filt <- df_raw |>
     Equipment = as.factor(Equipment),
   ) |> 
   filter(
-    !is.na(Age),
     !is.na(AgeClass),
     !is.na(State),
     !is.na(Country),
@@ -75,21 +74,20 @@ df_filt <- df_raw |>
     !is.na(Best3SquatKg),
     !is.na(Best3BenchKg),
     !is.na(Best3DeadliftKg),
-    !is.na(Dots),
+    !is.na(TotalKg),
     !is.na(Country),
     !is.na(Tested)
   ) |> 
   filter(
     Country == "USA",
     MeetCountry == "USA",
-    Federation %in% c("USAPL", "USPA"),
     State %in% c("Guam", "AK", "HI") == FALSE,
     MeetState %in% c("Guam", "AK", "HI") == FALSE,
     Best3SquatKg > 0,
     Best3DeadliftKg > 0,
     Best3BenchKg > 0,
+    TotalKg > 0,
     Sex %in% c("M", "F"),
-    Equipment == "Raw",
     AgeClass %in% c(
       "24-34", 
       "35-39", 
@@ -100,11 +98,9 @@ df_filt <- df_raw |>
       "60-64"
     ),
     Event == "SBD",
-    Place != "DQ",
-    Tested == "Yes",
+    Place %in% c("DQ", "DD", "NS") == FALSE,
     Sanctioned == "Yes",
-    year(Date) > 2005,
-    year(Date) != 2020
+    year(Date) > 2000
   )
 ```
 
@@ -204,28 +200,31 @@ df_lags <- df_mult_meet |>
   group_by(Name, State) |> 
   arrange(Name, State, Date) |> 
   mutate(
-    PrevAgeClass     = dplyr::lag(AgeClass),
-    PrevBodyweightKg = dplyr::lag(BodyweightKg),
+    PrevEquipment    = dplyr::lag(Equipment),
     PrevDate         = dplyr::lag(Date),
     PrevDots         = dplyr::lag(Dots),
+    PrevBench        = dplyr::lag(Best3BenchKg),
+    PrevSquat        = dplyr::lag(Best3SquatKg),
+    PrevDeadlift     = dplyr::lag(Best3DeadliftKg),
     PrevTotal        = dplyr::lag(TotalKg),
-    PrevDeltaTz      = dplyr::lag(StateMeetTzDiff),              
-    DaysSinceLast    = as.numeric(Date - PrevDate),
     DeltaDots        = Dots - PrevDots,
     DeltaTotal       = TotalKg - PrevTotal,
-    DeltaTotalPerc   = DeltaTotal / TotalKg
+    BenchPercChange = ((Best3BenchKg / PrevBench) * 100) - 100,
+    SquatPercChange = ((Best3SquatKg / PrevSquat) * 100) - 100,
+    DeadliftPercChange = ((Best3DeadliftKg / PrevDeadlift) * 100) - 100,
+    TotalKGPercChange = ((TotalKg / PrevTotal) * 100) - 100,
+    PrevDeltaTz      = dplyr::lag(StateMeetTzDiff),              
+    DaysSinceLast    = as.numeric(Date - PrevDate),
   ) |> 
   ungroup()
 
 df_lags_filt <- df_lags |> 
   filter(
-    !is.na(PrevDate),
-    between(DaysSinceLast, 30, 365),
+    Equipment == PrevEquipment,
+    between(DaysSinceLast, 30, 365*2),
     PrevDeltaTz == 0,
-    AgeClass == PrevAgeClass,
-    abs(BodyweightKg - PrevBodyweightKg) <= 5,
     between(MeetNumber, 2, 8),
-    between(DeltaTotal, -25, 75)
+    between(TotalKGPercChange, -20, 20)
   ) 
   
  df_clean <- df_lags_filt |> 
@@ -785,7 +784,25 @@ ggsave(
 
 ```{r}
 mod <- lmer(
-  DeltaTotal ~ StateMeetTzDiff*Sex + TotalKg + MeetNumber + 
+  TotalKGPercChange ~ StateMeetTzDiff + TotalKg + MeetNumber + 
+    AgeClass + BodyweightKg + cDays + (1 | Name), 
+  data = df_clean
+)
+
+mod_bench <- lmer(
+  BenchPercChange ~ StateMeetTzDiff + Best3BenchKg + MeetNumber + 
+    AgeClass + BodyweightKg + cDays + (1 | Name), 
+  data = df_clean
+)
+
+mod_squat <- lmer(
+  SquatPercChange ~ StateMeetTzDiff + Best3SquatKg + MeetNumber + 
+    AgeClass + BodyweightKg + cDays + (1 | Name), 
+  data = df_clean
+)
+
+mod_deadlift <- lmer(
+  DeadliftPercChange ~ StateMeetTzDiff + Best3DeadliftKg + MeetNumber + 
     AgeClass + BodyweightKg + cDays + (1 | Name), 
   data = df_clean
 )
@@ -883,7 +900,7 @@ emm_df_dup$Direction[2] <- "Westward"
       y = "ΔTotal (kg)",
       color = "Travel Direction"
     ) +
-    scale_y_continuous(limits = c(3, 15), breaks = c(5, 10, 15)) +
+    scale_y_continuous(limits = c(1, 3), breaks = c(1, 2, 3)) +
     theme_minimal() +
     plot_theme() +
     theme(
