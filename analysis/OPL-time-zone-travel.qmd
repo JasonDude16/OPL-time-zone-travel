@@ -231,7 +231,10 @@ df_lags_filt <- df_lags |>
   mutate(
     cDays = as.numeric(scale(DaysSinceLast)),
     StateMeetTzDiff = factor(StateMeetTzDiff),
-    StateMeetTzDiff = relevel(StateMeetTzDiff, ref = "0") 
+    StateMeetTzDiff = relevel(StateMeetTzDiff, ref = "0"),
+    MeetNumber = as.factor(MeetNumber),
+    AgeClass = as.factor(AgeClass),
+    Sex = as.factor(Sex)
   ) |> 
   arrange(Name, Date)
 ```
@@ -783,108 +786,62 @@ ggsave(
 ### Modeling
 
 ```{r}
-mod <- lmer(
-  TotalKGPercChange ~ StateMeetTzDiff + TotalKg + MeetNumber + 
+mod_squat <- lmer(
+  SquatPercChange ~ StateMeetTzDiff + Best3SquatKg + Sex + MeetNumber + 
     AgeClass + BodyweightKg + cDays + (1 | Name), 
   data = df_clean
 )
 
 mod_bench <- lmer(
-  BenchPercChange ~ StateMeetTzDiff + Best3BenchKg + MeetNumber + 
-    AgeClass + BodyweightKg + cDays + (1 | Name), 
-  data = df_clean
-)
-
-mod_squat <- lmer(
-  SquatPercChange ~ StateMeetTzDiff + Best3SquatKg + MeetNumber + 
+  BenchPercChange ~ StateMeetTzDiff + Best3BenchKg + Sex + MeetNumber + 
     AgeClass + BodyweightKg + cDays + (1 | Name), 
   data = df_clean
 )
 
 mod_deadlift <- lmer(
-  DeadliftPercChange ~ StateMeetTzDiff + Best3DeadliftKg + MeetNumber + 
+  DeadliftPercChange ~ StateMeetTzDiff + Best3DeadliftKg + Sex + MeetNumber + 
+    AgeClass + BodyweightKg + cDays + (1 | Name), 
+  data = df_clean
+)
+
+mod_total <- lmer(
+  TotalKGPercChange ~ StateMeetTzDiff + TotalKg + Sex + MeetNumber + 
     AgeClass + BodyweightKg + cDays + (1 | Name), 
   data = df_clean
 )
 ```
 
 ```{r}
-mod |> 
-  broom.mixed::tidy(effects = "fixed", conf.int = TRUE) |> 
-  rmarkdown::paged_table()
-```
+plot_mod_res <- function(mod, ylab, show.legend = FALSE) {
 
-```{r}
-emm <- emmeans(mod, ~ StateMeetTzDiff, pbkrtest.limit = Inf)   
-```
-
-```{r}
-emm_df <- as.data.frame(emm)
-emm_df <- emm_df |> 
-  mutate(
-    tz_signed = as.integer(as.character(StateMeetTzDiff)),        
-    Direction = case_when(
-      tz_signed >  0 ~ "Eastward",
-      tz_signed <  0 ~ "Westward",
-      tz_signed == 0 ~ "Local"
-    ),
-    tz_abs = abs(tz_signed)
+  emm <- emmeans(
+    mod,
+    ~ StateMeetTzDiff | Sex,
+    at = list(AgeClass = "24-34"),
+    pbkrtest.limit = Inf
   )
-
-emm_df |> 
-  mutate(`Time Zone` = case_when(
-    StateMeetTzDiff == 0 ~ "Local",
-    StateMeetTzDiff == -3 ~ "Westward, 3",
-    StateMeetTzDiff == -2 ~ "Westward, 2",
-    StateMeetTzDiff == -1 ~ "Westward, 1",
-    StateMeetTzDiff == 3 ~ "Eastward, 3",
-    StateMeetTzDiff == 2 ~ "Eastward, 2",
-    StateMeetTzDiff == 1 ~ "Eastward, 1"),
-    `Time Zone` = as.factor(`Time Zone`),
-    `Time Zone` = fct_relevel(
-      `Time Zone`,
-      c(
-        "Local",
-        "Westward, 1",
-        "Westward, 2",
-        "Westward, 3",
-        "Eastward, 1",
-        "Eastward, 2",
-        "Eastward, 3"
-      )
+  
+  emm_df <- as.data.frame(emm)
+  emm_df <- emm_df |> 
+    mutate(
+      tz_signed = as.integer(as.character(StateMeetTzDiff)),        
+      Direction = case_when(
+        tz_signed >  0 ~ "Eastward",
+        tz_signed <  0 ~ "Westward",
+        tz_signed == 0 ~ "Local"
+      ),
+      tz_abs = abs(tz_signed)
     )
-  ) |> 
-  arrange(`Time Zone`) |> 
-  select(`Time Zone`, emmean, lower.CL, upper.CL) |> 
-  map_if(is.numeric, round, 1) |> 
-  bind_cols() |> 
-  rmarkdown::paged_table()
-```
-
-```{r}
-# duplicate local tz for plotting
-emm_df_dup <- emm_df |> 
-  rbind(filter(emm_df, Direction == "Local")) |> 
-  arrange(as.numeric(tz_abs))
-
-emm_df_dup$Direction[1] <- "Eastward"
-emm_df_dup$Direction[2] <- "Westward"
-
-(p_emm_tz_travel <- emm_df_dup |> 
-    mutate(Direction = fct_rev(Direction)) |> 
-    ggplot(aes(
-      x = tz_abs,
-      y = emmean,
-      color = Direction
-    )) +
-    geom_hline(
-      yintercept = emm_df[emm_df$StateMeetTzDiff == 0, ]$emmean, 
-      linetype = 2,
-      linewidth = 0.8,
-      colour = "gray80"
-    ) +
-    geom_line(linewidth = 1.3) +
-    geom_point(size = 2.5) +
+  
+  emm_df |> 
+    mutate(
+      StateMeetTzDiff = fct_relevel(StateMeetTzDiff, c("-3", "-2", "-1", "0", "1", "2", "3")),
+      Sex = case_when(Sex == "F" ~ "Females", Sex == "M" ~ "Males"),
+      Direction = fct_relevel(Direction, c("Westward", "Local", "Eastward"))
+    ) |> 
+    ggplot(aes(StateMeetTzDiff, emmean, colour = Direction)) +
+    geom_line(linewidth = 1.3, show.legend = show.legend) +
+    geom_point(size = 2.5, show.legend = show.legend) +
     geom_errorbar(
       aes(
         ymin = lower.CL,
@@ -892,41 +849,79 @@ emm_df_dup$Direction[2] <- "Westward"
       ),
       width = 0.3,
       linewidth = 1,
-      alpha = 1
+      alpha = 1,
+      show.legend = show.legend
     ) +
-    scale_color_manual(values = c("Eastward" = "#9fcdfc", "Westward" = "#fcab9f")) +
-    scale_x_continuous(breaks = 0:3, labels = c("TZ-0", "TZ-1", "TZ-2", "TZ-3")) +
-    labs(
-      y = "ΔTotal (kg)",
-      color = "Travel Direction"
-    ) +
-    scale_y_continuous(limits = c(1, 3), breaks = c(1, 2, 3)) +
-    theme_minimal() +
-    plot_theme() +
+    geom_vline(xintercept = "0", linetype = 3, linewidth = 0.8, alpha = 0.5) +
+    geom_hline(yintercept = 0, linetype = 3, linewidth = 0.8, alpha = 0.5) +
+    scale_x_discrete(labels = c("3", "2", "1", "0", "1", "2", "3")) +
+    scale_color_manual(values = c("Eastward" = "blue3", "Westward" = "red3", "Local" = "black")) +
+    facet_wrap(~Sex) +
+    ylab(ylab) +
+    theme_classic() +
     theme(
+      axis.line = element_line(size = 0.9),
+      axis.ticks = element_line(size = 0.9),
+      axis.title.y = element_text(face = "bold"),
+      legend.position = "top",
+      legend.title = element_text(face = "bold"),
+      legend.text = element_text(face = "bold"),
       axis.title.x = element_blank(),
-      panel.grid.major = element_blank(),
-      text = element_text(size = 20, color = "gray90"),
-      axis.text.x = element_text(size = 24, color = "gray90"),
-      axis.text = element_text(color = "gray90"),
-      axis.line = element_line(linewidth = 1.2, color = "gray80"),
-      panel.grid.minor = element_blank(),
-      legend.position = c(0.55, .95),
-      legend.direction = "horizontal",
-      legend.box.background = element_rect(
-        fill = "black", 
-        color = "gray80", 
-        linewidth = 0.8
+      text = element_text(size = 16),
+      strip.background = element_rect(
+        fill = "grey95",
+        linewidth = 1.5
       )
     )
+}
+
+arrow_df <- expand.grid(
+  Lift = "Dead lift",
+  Sex = c("Females", "Males")
 )
 
-ggsave(
-  filename = "../figs/delta_total_by_time_zone.jpg",
-  plot = p_emm_tz_travel,
-  height = 1700,
-  width = 2400,
-  units = "px"
+arrow_plot <- ggplot(arrow_df) +
+  geom_segment(
+    aes(x = 0.5, xend = 0.05, y = 0.7, yend = 0.7),
+    colour = "red3",
+    linewidth = 1.3,
+    arrow = arrow(length = unit(0.25, "cm"))
+  ) +
+  geom_text(
+    aes(x = 0.3, y = 0.25, label = "Westward"),
+    colour = "red3",
+    fontface = "bold",
+    size = 5
+  ) +
+  geom_segment(
+    aes(x = 0.5, xend = 0.95, y = 0.7, yend = 0.7),
+    colour = "blue3",
+    linewidth = 1.3,
+    arrow = arrow(length = unit(0.25, "cm"))
+  ) +
+  geom_text(
+    aes(x = 0.7, y = 0.25, label = "Eastward"),
+    colour = "blue3",
+    fontface = "bold",
+    size = 5
+  ) +
+  facet_wrap(~ Lift + Sex, nrow = 1) +
+  xlim(0, 1) +
+  ylim(0, 1) +
+  theme_void() +
+  theme(
+    plot.margin = margin(0, 5.5, 0, 36),
+    strip.text = element_blank(),
+    strip.background = element_blank()
+  )
+
+gridExtra::grid.arrange(
+  plot_mod_res(mod_squat, "Squat, % change", show.legend = TRUE) + ylim(-1, 5),
+  plot_mod_res(mod_bench, "Bench, % change") + ylim(-1, 5),
+  plot_mod_res(mod_deadlift, "Dead lift, % change") + ylim(-1.5, 4),
+  arrow_plot,
+  ncol = 1,
+  heights = c(1, 1, 1, 0.16)
 )
 ```
 
@@ -986,12 +981,4 @@ place_summary <- place_diff |>
     axis.line = element_line(linewidth = 1.2, color = "gray80"),
     axis.title.y = element_text(margin = margin(r = 8))
   ))
-
-ggsave(
-  filename = "../figs/p_place_summary.jpeg",
-  plot = p_place_summary,
-  height = 1500,
-  width = 2200,
-  units = "px"
-)
 ```
